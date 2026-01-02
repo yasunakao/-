@@ -1,0 +1,16 @@
+
+{
+  "short_name": "黄疸検知",
+  "name": "Scleral Icterus Detector",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/822/822102.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2563eb",
+  "background_color": "#ffffff"
+}

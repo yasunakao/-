@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Scleral Icterus Detector",
+  "description": "A mobile application for non-invasive prediction of serum bilirubin levels using scleral color analysis (Lab b-channel) based on clinical validation studies.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
