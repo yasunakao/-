@@ -16,35 +16,47 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
-  // Square ROI for sclera extraction
-  const [roi, setRoi] = useState({ x: 100, y: 100, size: 40 });
+  // Larger ROI size for easier touch control
+  const ROI_SIZE = 60;
+  const [roi, setRoi] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
-    // Initial centering
-    if (containerRef.current) {
+    // Initial centering after a short delay to ensure layout is ready
+    const timer = setTimeout(() => {
+      if (containerRef.current) {
         const { width, height } = containerRef.current.getBoundingClientRect();
-        setRoi({ x: width / 2 - 20, y: height / 2 - 20, size: 40 });
-    }
+        setRoi({ 
+          x: (width / 2) - (ROI_SIZE / 2), 
+          y: (height / 2) - (ROI_SIZE / 2) 
+        });
+      }
+    }, 100);
+    return () => clearTimeout(timer);
   }, []);
 
-  const handleTouchStart = () => setIsDragging(true);
-  const handleTouchEnd = () => setIsDragging(false);
+  const handleStart = (e: React.TouchEvent | React.MouseEvent) => {
+    setIsDragging(true);
+    handleMove(e); // Immediately move to touch point
+  };
+  
+  const handleEnd = () => setIsDragging(false);
 
-  const handleTouchMove = (e: React.TouchEvent | React.MouseEvent) => {
+  const handleMove = (e: React.TouchEvent | React.MouseEvent) => {
     if (!isDragging || !containerRef.current) return;
     
     const rect = containerRef.current.getBoundingClientRect();
     const touch = 'touches' in e ? e.touches[0] : e;
     
-    const x = touch.clientX - rect.left - roi.size / 2;
-    const y = touch.clientY - rect.top - roi.size / 2;
+    // Position selector center at touch point
+    let x = touch.clientX - rect.left - ROI_SIZE / 2;
+    let y = touch.clientY - rect.top - ROI_SIZE / 2;
     
-    // Bounds check
-    const newX = Math.max(0, Math.min(x, rect.width - roi.size));
-    const newY = Math.max(0, Math.min(y, rect.height - roi.size));
+    // Stay within container bounds
+    x = Math.max(0, Math.min(x, rect.width - ROI_SIZE));
+    y = Math.max(0, Math.min(y, rect.height - ROI_SIZE));
     
-    setRoi(prev => ({ ...prev, x: newX, y: newY }));
+    setRoi({ x, y });
   };
 
   const processAnalysis = () => {
@@ -53,25 +65,48 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
     const img = imgRef.current;
     const canvas = canvasRef.current;
     
-    // Get natural scaling
-    const scaleX = img.naturalWidth / img.clientWidth;
-    const scaleY = img.naturalHeight / img.clientHeight;
+    // Important: Calculate the actual rendered dimensions of the image within object-contain
+    const containerWidth = img.clientWidth;
+    const containerHeight = img.clientHeight;
+    const imgAspect = img.naturalWidth / img.naturalHeight;
+    const containerAspect = containerWidth / containerHeight;
 
-    const sourceX = roi.x * scaleX;
-    const sourceY = roi.y * scaleY;
-    const sourceW = roi.size * scaleX;
-    const sourceH = roi.size * scaleY;
+    let renderWidth, renderHeight, offsetX = 0, offsetY = 0;
 
-    canvas.width = sourceW;
-    canvas.height = sourceH;
+    if (imgAspect > containerAspect) {
+      renderWidth = containerWidth;
+      renderHeight = containerWidth / imgAspect;
+      offsetY = (containerHeight - renderHeight) / 2;
+    } else {
+      renderHeight = containerHeight;
+      renderWidth = containerHeight * imgAspect;
+      offsetX = (containerWidth - renderWidth) / 2;
+    }
+
+    // Adjust ROI coordinates relative to the actual image area
+    const relativeX = (roi.x - offsetX);
+    const relativeY = (roi.y - offsetY);
+    
+    const scale = img.naturalWidth / renderWidth;
+
+    const sourceX = relativeX * scale;
+    const sourceY = relativeY * scale;
+    const sourceSize = ROI_SIZE * scale;
+
+    canvas.width = sourceSize;
+    canvas.height = sourceSize;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     
     if (ctx) {
-      ctx.drawImage(img, sourceX, sourceY, sourceW, sourceH, 0, 0, sourceW, sourceH);
-      const bValue = calculateMedianBChannel(ctx, sourceW, sourceH);
+      // Clear and draw just the cropped part
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, sourceX, sourceY, sourceSize, sourceSize, 0, 0, sourceSize, sourceSize);
+      
+      const bValue = calculateMedianBChannel(ctx, sourceSize, sourceSize);
       
       let category = JaundiceCategory.NORMAL;
-      if (bValue >= 138) category = JaundiceCategory.OVERT; // Higher threshold for overt
+      if (bValue >= 138) category = JaundiceCategory.OVERT;
       else if (bValue >= B_CHANNEL_THRESHOLD) category = JaundiceCategory.SUBCLINICAL;
 
       onComplete({
@@ -84,55 +119,57 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-900">
-      <div className="p-4 bg-gray-800 text-white text-sm text-center font-medium">
-        白目（強膜）の白い部分を選択してください
+    <div className="h-full flex flex-col bg-gray-950 overflow-hidden">
+      <div className="p-4 bg-gray-900 text-white text-xs text-center font-bold tracking-tight">
+        白目（強膜）の白い部分に黄色の枠を合わせてください
       </div>
 
       <div 
         ref={containerRef}
-        className="relative flex-1 overflow-hidden touch-none"
-        onMouseMove={handleTouchMove}
-        onMouseUp={handleTouchEnd}
-        onMouseLeave={handleTouchEnd}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        className="relative flex-1 overflow-hidden touch-none flex items-center justify-center bg-black"
+        onMouseMove={handleMove}
+        onMouseUp={handleEnd}
+        onMouseLeave={handleEnd}
+        onTouchMove={handleMove}
+        onTouchEnd={handleEnd}
+        onMouseDown={handleStart}
+        onTouchStart={handleStart}
       >
         <img 
           ref={imgRef}
           src={imageUrl} 
-          className="w-full h-full object-contain pointer-events-none"
+          className="w-full h-full object-contain pointer-events-none select-none"
           alt="Captured"
         />
         
         {/* ROI Selector */}
         <div 
-          onMouseDown={handleTouchStart}
-          onTouchStart={handleTouchStart}
           style={{
             left: roi.x,
             top: roi.y,
-            width: roi.size,
-            height: roi.size,
+            width: ROI_SIZE,
+            height: ROI_SIZE,
           }}
-          className="absolute border-2 border-yellow-400 bg-yellow-400/20 shadow-[0_0_0_1000px_rgba(0,0,0,0.5)] cursor-move flex items-center justify-center rounded-sm"
+          className="absolute border-2 border-yellow-400 bg-yellow-400/20 shadow-[0_0_0_2000px_rgba(0,0,0,0.6)] pointer-events-none rounded-sm flex items-center justify-center"
         >
-          <Move className="text-yellow-400 w-6 h-6" />
+          <div className="w-full h-full border border-white/30 flex items-center justify-center">
+            <Move className="text-yellow-400 w-6 h-6 drop-shadow-md" />
+          </div>
         </div>
       </div>
 
-      <div className="p-6 bg-white flex gap-4">
+      <div className="p-6 pb-10 bg-white flex gap-4 border-t border-gray-100">
         <button 
           onClick={onCancel}
-          className="flex-1 border border-gray-200 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-gray-50 active:scale-95 transition-all"
+          className="flex-1 border border-gray-200 py-4 rounded-xl font-bold text-gray-600 flex items-center justify-center gap-2 active:scale-95 transition-all"
         >
-          <X className="w-5 h-5" /> 撮り直す
+          <X className="w-5 h-5" /> 戻る
         </button>
         <button 
           onClick={processAnalysis}
-          className="flex-1 bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-200 active:scale-95 transition-all"
+          className="flex-1 bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-100 active:scale-95 transition-all"
         >
-          <Check className="w-5 h-5" /> 解析する
+          <Check className="w-5 h-5" /> 解析を実行
         </button>
       </div>
 
