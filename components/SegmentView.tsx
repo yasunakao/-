@@ -1,4 +1,5 @@
-import React, { useRef, useState, useEffect } from 'react';
+
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Check, X, Move } from 'lucide-react';
 import { AnalysisResult, JaundiceCategory } from '../types';
 import { calculateMedianBChannel } from '../services/colorAnalysis';
@@ -15,12 +16,12 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
-  // UI scaling: ROI size
+  // UI scaling: ROI size (64x64 is a good size for eyes)
   const ROI_SIZE = 64; 
   const [roi, setRoi] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
 
-  // Initial centering
+  // Center ROI on load
   useEffect(() => {
     const timer = setTimeout(() => {
       if (containerRef.current) {
@@ -34,29 +35,29 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
     return () => clearTimeout(timer);
   }, []);
 
+  const updatePosition = useCallback((e: React.TouchEvent | React.MouseEvent) => {
+    if (!containerRef.current) return;
+    
+    const rect = containerRef.current.getBoundingClientRect();
+    const touch = 'touches' in e ? e.touches[0] : (e as React.MouseEvent);
+    
+    // Position the center of the ROI box at the touch/click point
+    let x = touch.clientX - rect.left - ROI_SIZE / 2;
+    let y = touch.clientY - rect.top - ROI_SIZE / 2;
+    
+    // Boundary constraints to keep ROI inside the viewable area
+    x = Math.max(0, Math.min(x, rect.width - ROI_SIZE));
+    y = Math.max(0, Math.min(y, rect.height - ROI_SIZE));
+    
+    setRoi({ x, y });
+  }, []);
+
   const handleStart = (e: React.TouchEvent | React.MouseEvent) => {
     setIsDragging(true);
     updatePosition(e);
   };
   
   const handleEnd = () => setIsDragging(false);
-
-  const updatePosition = (e: React.TouchEvent | React.MouseEvent) => {
-    if (!containerRef.current) return;
-    
-    const rect = containerRef.current.getBoundingClientRect();
-    const touch = 'touches' in e ? e.touches[0] : (e as React.MouseEvent);
-    
-    // Position center of ROI at touch point
-    let x = touch.clientX - rect.left - ROI_SIZE / 2;
-    let y = touch.clientY - rect.top - ROI_SIZE / 2;
-    
-    // Boundary check
-    x = Math.max(0, Math.min(x, rect.width - ROI_SIZE));
-    y = Math.max(0, Math.min(y, rect.height - ROI_SIZE));
-    
-    setRoi({ x, y });
-  };
 
   const handleMove = (e: React.TouchEvent | React.MouseEvent) => {
     if (!isDragging) return;
@@ -69,7 +70,7 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
     const img = imgRef.current;
     const canvas = canvasRef.current;
     
-    // Calculate the actual image display area (object-contain)
+    // Handle object-contain image scaling logic
     const containerWidth = img.clientWidth;
     const containerHeight = img.clientHeight;
     const naturalWidth = img.naturalWidth;
@@ -89,7 +90,7 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
       offsetX = (containerWidth - displayedWidth) / 2;
     }
 
-    // Map displayed pixels to natural image pixels
+    // Convert UI coordinates to natural image coordinates
     const relativeX = (roi.x - offsetX);
     const relativeY = (roi.y - offsetY);
     const scale = naturalWidth / displayedWidth;
@@ -123,12 +124,12 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
   return (
     <div className="flex-1 flex flex-col bg-gray-950 overflow-hidden h-full">
       <div className="p-3 bg-gray-900 text-white text-[10px] text-center font-bold tracking-widest uppercase">
-        白目の白い部分に枠を合わせてください
+        画面をタッチして、白目の白い部分に枠を合わせてください
       </div>
 
       <div 
         ref={containerRef}
-        className="relative flex-1 overflow-hidden touch-none flex items-center justify-center bg-black"
+        className="relative flex-1 overflow-hidden touch-none flex items-center justify-center bg-black cursor-crosshair"
         onMouseMove={handleMove}
         onMouseUp={handleEnd}
         onMouseLeave={handleEnd}
@@ -140,11 +141,11 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
         <img 
           ref={imgRef}
           src={imageUrl} 
-          className="w-full h-full object-contain pointer-events-none"
-          alt="Captured"
+          className="w-full h-full object-contain pointer-events-none select-none"
+          alt="Target"
         />
         
-        {/* Shadow Overlay around ROI */}
+        {/* Shadow Overlay around ROI to highlight selection */}
         <div 
           style={{
             left: roi.x,
@@ -154,11 +155,11 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
           }}
           className="absolute border-2 border-yellow-400 bg-yellow-400/10 shadow-[0_0_0_2000px_rgba(0,0,0,0.6)] rounded-sm pointer-events-none flex items-center justify-center"
         >
-          <Move className="text-yellow-400 w-6 h-6 drop-shadow-md opacity-80" />
+          <Move className="text-yellow-400 w-6 h-6 drop-shadow-lg opacity-90 animate-pulse" />
         </div>
       </div>
 
-      <div className="p-6 pb-10 bg-white flex gap-4 border-t border-gray-100 shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
+      <div className="p-6 pb-12 bg-white flex gap-4 border-t border-gray-100 shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
         <button 
           onClick={onCancel}
           className="flex-1 border border-gray-200 py-4 rounded-2xl font-bold text-gray-500 flex items-center justify-center gap-2 active:scale-95 transition-all"
@@ -167,9 +168,9 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
         </button>
         <button 
           onClick={processAnalysis}
-          className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-100 active:scale-95 transition-all"
+          className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-200 active:scale-95 transition-all"
         >
-          <Check className="w-5 h-5" /> 解析実行
+          <Check className="w-5 h-5" /> 解析を実行
         </button>
       </div>
 
