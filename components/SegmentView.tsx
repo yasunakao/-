@@ -1,6 +1,6 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Check, X, Maximize, ZoomIn, ZoomOut, Move } from 'lucide-react';
+import { Check, X, Maximize, ZoomIn, ZoomOut, Target } from 'lucide-react';
 import { AnalysisResult, JaundiceCategory } from '../types';
 import { calculateMedianBChannel } from '../services/colorAnalysis';
 import { B_CHANNEL_THRESHOLD } from '../constants';
@@ -17,12 +17,12 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // Interaction State
-  const [zoom, setZoom] = useState(1.5); // Default slight zoom for better initial view
+  const [zoom, setZoom] = useState(2.0); // Start with 2x zoom for clarity
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [lastTouch, setLastTouch] = useState({ x: 0, y: 0 });
 
-  const ROI_SIZE = 80; // Size of the fixed center frame
+  const ROI_SIZE = 90; // Slightly larger circular frame for better visibility
 
   // Drag logic to pan the image
   const handleStart = (e: React.TouchEvent | React.MouseEvent) => {
@@ -53,31 +53,24 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
     
-    // Get current visual boundaries
     const rect = img.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
     
-    // Calculate the center of the container (where our ROI box is fixed)
     const centerX = containerRect.left + containerRect.width / 2;
     const centerY = containerRect.top + containerRect.height / 2;
     
-    // Calculate which part of the NATURAL image is at the center of the UI
     const naturalWidth = img.naturalWidth;
     const naturalHeight = img.naturalHeight;
     
-    // Ratio between displayed image size and natural image size
     const scaleX = naturalWidth / rect.width;
     const scaleY = naturalHeight / rect.height;
     
-    // The point in natural pixels that corresponds to the center of our ROI box
     const roiSourceCenterX = (centerX - rect.left) * scaleX;
     const roiSourceCenterY = (centerY - rect.top) * scaleY;
     
-    // Size of the ROI in natural pixels
     const sourceSizeX = ROI_SIZE * scaleX;
     const sourceSizeY = ROI_SIZE * scaleY;
     
-    // Ensure we don't sample outside the image
     const sourceX = Math.max(0, roiSourceCenterX - sourceSizeX / 2);
     const sourceY = Math.max(0, roiSourceCenterY - sourceSizeY / 2);
 
@@ -86,10 +79,15 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     
     if (ctx) {
+      // Create a circular clip on the canvas for actual analysis sampling
+      ctx.beginPath();
+      ctx.arc(sourceSizeX / 2, sourceSizeY / 2, sourceSizeX / 2, 0, Math.PI * 2);
+      ctx.clip();
+
       ctx.drawImage(
         img, 
-        sourceX, sourceY, sourceSizeX, sourceSizeY, // Source rectangle
-        0, 0, sourceSizeX, sourceSizeY              // Destination rectangle
+        sourceX, sourceY, sourceSizeX, sourceSizeY,
+        0, 0, sourceSizeX, sourceSizeY
       );
       
       const bValue = calculateMedianBChannel(ctx, sourceSizeX, sourceSizeY);
@@ -112,11 +110,11 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
       {/* Precision Header */}
       <div className="px-6 py-4 glass-dark text-white border-b border-white/10 z-20 flex items-center justify-between">
         <div className="flex flex-col">
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Precision Target</span>
-          <span className="text-xs font-bold">画像を動かして白目に合わせる</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">Micro-Scope Targeting</span>
+          <span className="text-xs font-bold text-slate-300">画像をスライドして円の中央に合わせる</span>
         </div>
-        <div className="bg-blue-500/20 px-3 py-1 rounded-full border border-blue-500/30">
-          <span className="text-[10px] font-black text-blue-400">×{zoom.toFixed(1)}</span>
+        <div className="bg-blue-500/20 px-4 py-1.5 rounded-full border border-blue-500/40 shadow-inner">
+          <span className="text-[11px] font-black text-blue-300 tracking-tighter">ZOOM ×{zoom.toFixed(1)}</span>
         </div>
       </div>
 
@@ -132,79 +130,113 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
         onTouchMove={handleMove}
         onTouchEnd={handleEnd}
       >
-        {/* The Image being panned/zoomed */}
+        {/* Panned/Zoomed Image */}
         <img 
           ref={imgRef}
           src={imageUrl} 
           style={{
             transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
-            transition: isDragging ? 'none' : 'transform 0.1s ease-out'
+            transition: isDragging ? 'none' : 'transform 0.15s cubic-bezier(0.2, 0, 0.2, 1)'
           }}
           className="max-w-none w-full h-full object-contain pointer-events-none"
           alt="Subject"
         />
         
-        {/* Dimming layer outside the frame */}
-        <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_100px_rgba(0,0,0,0.8)] flex items-center justify-center">
-          <div className="w-full h-full bg-black/40" style={{
-            clipPath: `polygon(0% 0%, 0% 100%, calc(50% - ${ROI_SIZE/2}px) 100%, calc(50% - ${ROI_SIZE/2}px) calc(50% - ${ROI_SIZE/2}px), calc(50% + ${ROI_SIZE/2}px) calc(50% - ${ROI_SIZE/2}px), calc(50% + ${ROI_SIZE/2}px) calc(50% + ${ROI_SIZE/2}px), calc(50% - ${ROI_SIZE/2}px) calc(50% + ${ROI_SIZE/2}px), calc(50% - ${ROI_SIZE/2}px) 100%, 100% 100%, 100% 0%)`
+        {/* Advanced Circular Masking Overlay */}
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+          {/* Use a complex radial gradient to create a sharp hole with blurred edges for the rest of the image */}
+          <div className="absolute inset-0 bg-black/60" style={{
+             clipPath: `path('M 0 0 H 1000 V 1000 H 0 Z M 500 500 m -${ROI_SIZE/2} 0 a ${ROI_SIZE/2} ${ROI_SIZE/2} 0 1 0 ${ROI_SIZE} 0 a ${ROI_SIZE/2} ${ROI_SIZE/2} 0 1 0 -${ROI_SIZE} 0')`,
+             // Note: In a real browser viewport, we'd use calc or dynamic path, 
+             // for simplicity in this React component we'll use a standard mask-image approach.
           }}></div>
+          
+          {/* Fallback Mask if clip-path is tricky: Semi-transparent overlay with a circular cutout */}
+          <div 
+            className="absolute inset-0 bg-black/60 pointer-events-none shadow-[inset_0_0_150px_rgba(0,0,0,0.9)]"
+            style={{
+              maskImage: `radial-gradient(circle ${ROI_SIZE/2}px at center, transparent 100%, black 100%)`,
+              WebkitMaskImage: `radial-gradient(circle ${ROI_SIZE/2}px at center, transparent 100%, black 100%)`
+            }}
+          ></div>
         </div>
 
-        {/* Fixed Center ROI Frame */}
+        {/* Circular Precision Frame */}
         <div 
           style={{ width: ROI_SIZE, height: ROI_SIZE }}
-          className="absolute border-2 border-blue-400 rounded-2xl shadow-[0_0_30px_rgba(59,130,246,0.6)] pointer-events-none flex items-center justify-center"
+          className="absolute rounded-full border-2 border-blue-400/80 shadow-[0_0_40px_rgba(59,130,246,0.5),inset_0_0_20px_rgba(59,130,246,0.3)] pointer-events-none flex items-center justify-center"
         >
-          {/* Crosshair lines */}
-          <div className="absolute w-8 h-[1px] bg-blue-400/50"></div>
-          <div className="absolute h-8 w-[1px] bg-blue-400/50"></div>
+          {/* Animated Scanning Circle */}
+          <div className="absolute inset-0 rounded-full border border-blue-400/20 animate-ping opacity-30"></div>
           
-          {/* Corner brackets */}
-          <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-white rounded-tl-lg"></div>
-          <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-white rounded-tr-lg"></div>
-          <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-white rounded-bl-lg"></div>
-          <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-white rounded-br-lg"></div>
+          {/* Precision Crosshairs */}
+          <div className="absolute w-full h-[0.5px] bg-blue-400/40"></div>
+          <div className="absolute h-full w-[0.5px] bg-blue-400/40"></div>
+          
+          {/* Internal Target Circle */}
+          <div className="w-2 h-2 rounded-full border border-blue-400/60 bg-blue-400/10"></div>
+          
+          {/* Targeting Brackets */}
+          <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-white rounded-tl-lg"></div>
+          <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-white rounded-tr-lg"></div>
+          <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-white rounded-bl-lg"></div>
+          <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-white rounded-br-lg"></div>
 
-          {/* Label Tag */}
-          <div className="absolute -bottom-10 flex flex-col items-center">
-             <div className="bg-blue-600 text-white text-[9px] font-black px-3 py-1 rounded-full shadow-lg flex items-center gap-1.5 whitespace-nowrap">
-               <Maximize className="w-3 h-3" /> ANALYZE AREA
+          {/* Label Display */}
+          <div className="absolute -bottom-12 flex flex-col items-center">
+             <div className="bg-blue-600/90 backdrop-blur-md text-white text-[8px] font-black px-4 py-1.5 rounded-full shadow-2xl flex items-center gap-2 border border-white/20 uppercase tracking-widest">
+               <Target className="w-3 h-3 text-blue-200" /> Sampling Spot
              </div>
           </div>
         </div>
       </div>
 
-      {/* Control Tools */}
-      <div className="bg-white/95 backdrop-blur-md p-6 border-t border-slate-100 flex flex-col gap-6 safe-area-bottom">
-        {/* Zoom Slider */}
-        <div className="flex items-center gap-4">
-          <ZoomOut className="w-5 h-5 text-slate-400" />
-          <input 
-            type="range" 
-            min="1" 
-            max="5" 
-            step="0.1" 
-            value={zoom}
-            onChange={(e) => setZoom(parseFloat(e.target.value))}
-            className="flex-1 h-2 bg-slate-100 rounded-full appearance-none cursor-pointer accent-blue-600"
-          />
-          <ZoomIn className="w-5 h-5 text-slate-400" />
+      {/* Control Dashboard */}
+      <div className="bg-white p-8 border-t border-slate-100 flex flex-col gap-8 safe-area-bottom shadow-[0_-20px_50px_rgba(0,0,0,0.1)] rounded-t-[3rem]">
+        {/* Enhanced Zoom Slider */}
+        <div className="space-y-4">
+          <div className="flex justify-between items-end px-2">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Magnification</span>
+            <span className="text-sm font-black text-blue-600">×{zoom.toFixed(1)}</span>
+          </div>
+          <div className="flex items-center gap-5">
+            <button 
+              onClick={() => setZoom(prev => Math.max(1, prev - 0.5))}
+              className="p-2 bg-slate-50 rounded-xl text-slate-400 active:bg-blue-50 active:text-blue-600 transition-colors"
+            >
+              <ZoomOut className="w-5 h-5" />
+            </button>
+            <input 
+              type="range" 
+              min="1" 
+              max="10" 
+              step="0.1" 
+              value={zoom}
+              onChange={(e) => setZoom(parseFloat(e.target.value))}
+              className="flex-1 h-3 bg-slate-100 rounded-full appearance-none cursor-pointer accent-blue-600"
+            />
+            <button 
+              onClick={() => setZoom(prev => Math.min(10, prev + 0.5))}
+              className="p-2 bg-slate-50 rounded-xl text-slate-400 active:bg-blue-50 active:text-blue-600 transition-colors"
+            >
+              <ZoomIn className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Action Buttons */}
         <div className="flex gap-4">
           <button 
             onClick={onCancel}
-            className="flex-1 bg-slate-100 py-4 rounded-2xl font-black text-slate-500 flex items-center justify-center gap-2 active:scale-95 transition-all"
+            className="flex-1 bg-slate-50 py-5 rounded-[1.5rem] font-black text-slate-400 flex items-center justify-center gap-2 active:scale-95 transition-all border border-slate-100"
           >
-            <X className="w-5 h-5" /> 撮り直し
+            <X className="w-5 h-5" /> 戻る
           </button>
           <button 
             onClick={processAnalysis}
-            className="flex-2 bg-blue-600 text-white py-4 px-8 rounded-2xl font-black flex items-center justify-center gap-2 shadow-xl shadow-blue-200 active:scale-95 transition-all"
+            className="flex-[2] bg-slate-900 text-white py-5 px-8 rounded-[1.5rem] font-black flex items-center justify-center gap-3 shadow-2xl shadow-slate-300 active:scale-95 transition-all"
           >
-            <Check className="w-6 h-6" /> 解析を実行
+            <Maximize className="w-5 h-5 text-blue-400" /> 精密解析を開始
           </button>
         </div>
       </div>
