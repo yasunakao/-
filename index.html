@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>白目黄疸検知アプリ</title>
+    <title>Scleral Icterus Detector</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
     
     <!-- iOS PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -11,18 +16,33 @@
     <meta name="apple-mobile-web-app-title" content="黄疸検知">
     <link rel="manifest" href="/manifest.json">
     
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { 
             font-family: 'Inter', sans-serif; 
             -webkit-tap-highlight-color: transparent;
             margin: 0;
-            background-color: #f9fafb;
+            background-color: #f8fafc;
             overscroll-behavior-y: contain;
+            color: #1e293b;
         }
         #root {
             height: 100dvh;
             display: flex;
             flex-direction: column;
+        }
+        .safe-area-bottom {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .glass-dark {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .glass-light {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
         }
     </style>
 <script type="importmap">
