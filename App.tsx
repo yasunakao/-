@@ -1,3 +1,4 @@
+/// <reference types="react" />
 import React, { useState, useRef } from 'react';
 import { Camera, RefreshCcw, Eye, Info, CheckCircle2, FileImage, ShieldCheck, Activity } from 'lucide-react';
 import { AppState, AnalysisResult } from './types';

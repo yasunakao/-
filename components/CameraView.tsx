@@ -1,3 +1,4 @@
+/// <reference types="react" />
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Camera as CameraIcon, AlertCircle, RefreshCw, SwitchCamera, X } from 'lucide-react';
 

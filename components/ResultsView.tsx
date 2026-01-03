@@ -1,3 +1,4 @@
+/// <reference types="react" />
 import React from 'react';
 import { Share2, RefreshCcw, AlertCircle, CheckCircle2, Info, ChevronRight, Activity, TrendingUp } from 'lucide-react';
 import { AnalysisResult, JaundiceCategory } from '../types';

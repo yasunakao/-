@@ -1,10 +1,7 @@
 
 /**
- * Converts sRGB to CIE Lab.
- * Based on standard formulas.
- * The paper uses an offset 'b_median' where the threshold is 133.6.
- * Standard Lab b* ranges from -128 to 127.
- * Offset version = b* + 128.
+ * Converts sRGB to CIE Lab and calculates the Median of the b-channel.
+ * Ignores pixels with 0 alpha to support clipped (circular) regions.
  */
 export const calculateMedianBChannel = (ctx: CanvasRenderingContext2D, width: number, height: number): number => {
   const imageData = ctx.getImageData(0, 0, width, height);
@@ -12,6 +9,10 @@ export const calculateMedianBChannel = (ctx: CanvasRenderingContext2D, width: nu
   const bValues: number[] = [];
 
   for (let i = 0; i < pixels.length; i += 4) {
+    const alpha = pixels[i + 3];
+    // Skip transparent pixels (outside the circular clip)
+    if (alpha === 0) continue;
+
     const r = pixels[i] / 255;
     const g = pixels[i + 1] / 255;
     const b = pixels[i + 2] / 255;
@@ -33,19 +34,15 @@ export const calculateMedianBChannel = (ctx: CanvasRenderingContext2D, width: nu
     const zN = 108.883;
 
     const f = (t: number) => t > 0.008856 ? Math.pow(t, 1/3) : (7.787 * t) + (16 / 116);
-
-    // const lStar = 116 * f(y / yN) - 16;
-    // const aStar = 500 * (f(x / xN) - f(y / yN));
     const bStar = 200 * (f(y / yN) - f(z / zN));
 
     // Map b* (-128 to 127) to (0 to 255) to match the paper's offset implementation
-    // The paper's b_median values are around 130-150.
     bValues.push(bStar + 128);
   }
 
   if (bValues.length === 0) return 0;
 
-  // Calculate Median
+  // Calculate Median (Robust against veins/outliers)
   bValues.sort((a, b) => a - b);
   const mid = Math.floor(bValues.length / 2);
   return bValues.length % 2 !== 0 ? bValues[mid] : (bValues[mid - 1] + bValues[mid]) / 2;
