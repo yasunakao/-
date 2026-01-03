@@ -1,6 +1,6 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Check, X, Move } from 'lucide-react';
+import { Check, X, Move, Target } from 'lucide-react';
 import { AnalysisResult, JaundiceCategory } from '../types';
 import { calculateMedianBChannel } from '../services/colorAnalysis';
 import { B_CHANNEL_THRESHOLD } from '../constants';
@@ -16,7 +16,7 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
-  // UI scaling: ROI size (64x64 is a good size for eyes)
+  // UI scaling: ROI size
   const ROI_SIZE = 64; 
   const [roi, setRoi] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -45,7 +45,7 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
     let x = touch.clientX - rect.left - ROI_SIZE / 2;
     let y = touch.clientY - rect.top - ROI_SIZE / 2;
     
-    // Boundary constraints to keep ROI inside the viewable area
+    // Boundary constraints
     x = Math.max(0, Math.min(x, rect.width - ROI_SIZE));
     y = Math.max(0, Math.min(y, rect.height - ROI_SIZE));
     
@@ -70,7 +70,6 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
     const img = imgRef.current;
     const canvas = canvasRef.current;
     
-    // Handle object-contain image scaling logic
     const containerWidth = img.clientWidth;
     const containerHeight = img.clientHeight;
     const naturalWidth = img.naturalWidth;
@@ -90,7 +89,6 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
       offsetX = (containerWidth - displayedWidth) / 2;
     }
 
-    // Convert UI coordinates to natural image coordinates
     const relativeX = (roi.x - offsetX);
     const relativeY = (roi.y - offsetY);
     const scale = naturalWidth / displayedWidth;
@@ -124,7 +122,7 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
   return (
     <div className="flex-1 flex flex-col bg-gray-950 overflow-hidden h-full">
       <div className="p-3 bg-gray-900 text-white text-[10px] text-center font-bold tracking-widest uppercase">
-        画面をタッチして、白目の白い部分に枠を合わせてください
+        白目の最も白い(黄色い)部分に枠を移動してください
       </div>
 
       <div 
@@ -141,11 +139,14 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
         <img 
           ref={imgRef}
           src={imageUrl} 
-          className="w-full h-full object-contain pointer-events-none select-none"
+          className="w-full h-full object-contain pointer-events-none select-none opacity-90"
           alt="Target"
         />
         
-        {/* Shadow Overlay around ROI to highlight selection */}
+        {/* High-visibility Shadow Overlay */}
+        <div className="absolute inset-0 bg-black/40 pointer-events-none"></div>
+
+        {/* ROI Box with enhanced visibility */}
         <div 
           style={{
             left: roi.x,
@@ -153,9 +154,37 @@ const SegmentView: React.FC<Props> = ({ imageUrl, onComplete, onCancel }) => {
             width: ROI_SIZE,
             height: ROI_SIZE,
           }}
-          className="absolute border-2 border-yellow-400 bg-yellow-400/10 shadow-[0_0_0_2000px_rgba(0,0,0,0.6)] rounded-sm pointer-events-none flex items-center justify-center"
+          className="absolute border-[3px] border-yellow-400 rounded-lg shadow-[0_0_0_2000px_rgba(0,0,0,0.7),0_0_15px_rgba(255,255,0,0.5)] pointer-events-none flex items-center justify-center overflow-hidden"
         >
-          <Move className="text-yellow-400 w-6 h-6 drop-shadow-lg opacity-90 animate-pulse" />
+          {/* Inner focus lines for precision */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-full h-[1px] bg-yellow-400/30"></div>
+            <div className="h-full w-[1px] bg-yellow-400/30 absolute"></div>
+          </div>
+          
+          {/* Subtle icon to indicate movability without blocking view */}
+          <Target className="text-yellow-400 w-5 h-5 opacity-40" />
+
+          {/* Corner accents for better "Frame" feel */}
+          <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-white"></div>
+          <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-white"></div>
+          <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-white"></div>
+          <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-white"></div>
+        </div>
+
+        {/* Floating Instruction Tag */}
+        <div 
+          className="absolute pointer-events-none transition-all duration-75"
+          style={{
+            left: roi.x + ROI_SIZE / 2,
+            top: roi.y - 40,
+            transform: 'translateX(-50%)'
+          }}
+        >
+          <div className="bg-yellow-400 text-black text-[9px] font-black px-2 py-1 rounded shadow-lg uppercase tracking-tighter whitespace-nowrap">
+            解析エリア
+          </div>
+          <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-yellow-400 mx-auto"></div>
         </div>
       </div>
 
